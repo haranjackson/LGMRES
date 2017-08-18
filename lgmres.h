@@ -23,8 +23,8 @@ public:
 };
 
 
-Vec lgmres(Vec (System::*matvec)(Vec), Vec (System::*psolve)(Vec),
-           System & system, Vecr b, Vec x, std::vector<Vec> & outer_v,
+Vec lgmres(std::function<Vec(Vec)> matvec, std::function<Vec(Vec)> psolve,
+           Vecr b, Vec x, std::vector<Vec> & outer_v,
            const double tol, const int maxiter,
            const int inner_m, const unsigned int outer_k);
 

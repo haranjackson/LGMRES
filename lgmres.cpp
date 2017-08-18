@@ -4,7 +4,7 @@
 #include "lgmres.h"
 
 
-double mEPS = 2.2204460492503131e-16;
+const double mEPS = 2.2204460492503131e-16;
 
 
 DecQR qr_append(Matr Q, Matr R, Matr u)
@@ -16,8 +16,8 @@ DecQR qr_append(Matr Q, Matr R, Matr u)
     return ret.compute(A);
 }
 
-Vec lgmres(Vec (System::*matvec)(Vec), Vec (System::*psolve)(Vec),
-           System & system, Vecr b, Vec x, std::vector<Vec> & outer_v,
+Vec lgmres(std::function<Vec(Vec)> matvec, std::function<Vec(Vec)> psolve,
+           Vecr b, Vec x, std::vector<Vec> & outer_v,
            const double tol=1e-5, const int maxiter=1,
            const int inner_m=30, const unsigned int outer_k=10)
 {
@@ -29,13 +29,13 @@ Vec lgmres(Vec (System::*matvec)(Vec), Vec (System::*psolve)(Vec),
 
     for (int k_outer=0; k_outer<maxiter; k_outer++)
     {
-        Vec r_outer = (system.*matvec)(x) - b;
+        Vec r_outer = matvec(x) - b;
 
         double r_norm = r_outer.norm();
         if (r_norm <= tol * b_norm || r_norm <= tol)
             break;
 
-        Vec vs0 = - (system.*psolve)(r_outer);
+        Vec vs0 = - psolve(r_outer);
         double inner_res_0 = vs0.norm();
 
         vs0 /= inner_res_0;
@@ -57,7 +57,7 @@ Vec lgmres(Vec (System::*matvec)(Vec), Vec (System::*psolve)(Vec),
             else
                 z = vs.back();
 
-            Vec v_new = (system.*psolve)((system.*matvec)(z));
+            Vec v_new = psolve(matvec(z));
             double v_new_norm = v_new.norm();
 
             Vec hcur = Vec::Zero(j+1);
@@ -132,6 +132,10 @@ Vec lgmres_wrapper(Matr A, Vecr b, Vecr x0, Matr M, const double tol,
     if (x0.rows()==0 && x0.cols()==0)
         x0 = Vec::Zero(b.size());
 
-    return lgmres(&System::call, &System::prec, system, b, x0,
+    using std::placeholders::_1;
+    std::function<Vec(Vec)> matvec = std::bind(&System::call, system, _1);
+    std::function<Vec(Vec)> psolve = std::bind(&System::prec, system, _1);
+
+    return lgmres(matvec, psolve, b, x0,
                   outer_v, tol, maxiter, inner_m, outer_k);
 }
