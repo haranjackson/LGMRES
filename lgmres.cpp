@@ -7,17 +7,6 @@
 const double mEPS = 2.2204460492503131e-16;
 
 
-DecQR qr_append(Matr Q, Matr R, Matr u) {
-  // Returns QR factorization of Q*R with u appended as the last column
-  Mat A = Q * R;
-  int nr = A.rows();
-  int nc = A.cols();
-  A.conservativeResize(nr, nc + 1);
-  A.col(nc) = u;
-  DecQR ret;
-  return ret.compute(A);
-}
-
 Vec lgmres(VecFunc matvec, VecFunc psolve, Vecr b, Vec x,
            std::vector<Vec> &outer_v, const double tol, const int maxiter,
            const int inner_m, const unsigned int outer_k) {
@@ -31,8 +20,11 @@ Vec lgmres(VecFunc matvec, VecFunc psolve, Vecr b, Vec x,
   Vec r_outer(n);
   Vec vs0(n);
   Vec mvz(n);
+  Vec z(n);
+  Vec v_new(n);
 
   for (int k_outer = 0; k_outer < maxiter; k_outer++) {
+
     r_outer = matvec(x) - b;
 
     double r_norm = r_outer.norm();
@@ -41,16 +33,19 @@ Vec lgmres(VecFunc matvec, VecFunc psolve, Vecr b, Vec x,
 
     vs0 = -psolve(r_outer);
     double inner_res_0 = vs0.norm();
-
     vs0 /= inner_res_0;
-    std::vector<Vec> vs = {vs0};
-    std::vector<Vec> ws;
-
-    Mat Q = Mat::Ones(1, 1);
-    Mat R = Mat::Zero(1, 0);
-    Vec z(n);
 
     unsigned int ind = 1 + inner_m + outer_v.size();
+
+    Mat vs = Mat(ind, n);
+    Mat ws = Mat(ind - 1, n);
+    Mat A = Mat(ind, ind);
+    Mat Q = Mat::Zero(ind, ind);
+    Mat R = Mat::Zero(ind, ind-1);
+    vs.row(0) = vs0;
+    Q(0, 0) = 1.;
+    DecQR QR;
+
     unsigned int j = 1;
     for (; j < ind; j++) {
 
@@ -59,36 +54,34 @@ Vec lgmres(VecFunc matvec, VecFunc psolve, Vecr b, Vec x,
       else if (j == outer_v.size() + 1)
         z = vs0;
       else
-        z = vs.back();
+        z = vs.row(j - 1);
 
       mvz = matvec(z);
-      Vec v_new = psolve(mvz);
+      v_new = psolve(mvz);
       double v_new_norm = v_new.norm();
 
       Vec hcur = Vec::Zero(j + 1);
-      for (unsigned int i = 0; i < vs.size(); i++) {
-        double alpha = vs[i].dot(v_new);
+      for (unsigned int i = 0; i < j; i++) {
+        double alpha = vs.row(i).dot(v_new);
         hcur(i) = alpha;
-        v_new -= alpha * vs[i];
+        v_new -= alpha * vs.row(i);
       }
       hcur(j) = v_new.norm();
 
       v_new /= hcur(j);
-      vs.push_back(v_new);
-      ws.push_back(z);
+      vs.row(j) = v_new;
+      ws.row(j - 1) = z;
 
-      Mat Q2 = Mat::Zero(j + 1, j + 1);
-      Q2.topLeftCorner(j, j) = Q;
-      Q2(j, j) = 1.;
+      Q(j, j) = 1.;
 
-      Mat R2 = Mat::Zero(j + 1, j - 1);
-      R2.topRows(j) = R;
+      A.topLeftCorner(j + 1, j - 1) = Q.topLeftCorner(j + 1, j + 1) *
+                                      R.topLeftCorner(j + 1, j - 1);
+      A.block(0, j - 1, j + 1, 1) = hcur;
+      QR.compute(A.topLeftCorner(j + 1, j));
 
-      DecQR QR = qr_append(Q2, R2, hcur);
-      Q.conservativeResize(j + 1, j + 1);
-      R.conservativeResize(j + 1, j - 1);
-      Q = QR.householderQ();
-      R = QR.matrixQR().triangularView<Eigen::Upper>();
+
+      Q.topLeftCorner(j + 1, j + 1) = QR.householderQ();
+      R.topLeftCorner(j + 1, j) = QR.matrixQR().triangularView<Eigen::Upper>();
 
       double inner_res = std::abs(Q(0, j)) * inner_res_0;
 
@@ -98,13 +91,13 @@ Vec lgmres(VecFunc matvec, VecFunc psolve, Vecr b, Vec x,
     if (j == ind)
       j -= 1;
 
-    Vec y = R.topLeftCorner(j, j).colPivHouseholderQr().solve(
-        Q.topLeftCorner(1, j).transpose());
+    Vec y = R.topLeftCorner(j, j).householderQr().solve(
+                Q.topLeftCorner(1, j).transpose());
     y *= inner_res_0;
 
-    Vec dx = y(0) * ws[0];
+    Vec dx = y(0) * ws.row(0);
     for (int i = 1; i < y.size(); i++)
-      dx += y(i) * ws[i];
+      dx += y(i) * ws.row(i);
 
     double nx = dx.norm();
     if (nx > 0.)
