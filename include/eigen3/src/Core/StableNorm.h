@@ -74,7 +74,7 @@ blueNorm_impl(const EigenBase<Derived>& _vec)
     // are used. For any specific computer, each of the assignment
     // statements can be replaced
     ibeta = std::numeric_limits<RealScalar>::radix;                 // base for floating-point numbers
-    it    = std::numeric_limits<RealScalar>::digits;                // number of base-beta digits in mantissa
+    it    = NumTraits<RealScalar>::digits();                        // number of base-beta digits in mantissa
     iemin = std::numeric_limits<RealScalar>::min_exponent;          // minimum exponent
     iemax = std::numeric_limits<RealScalar>::max_exponent;          // maximum exponent
     rbig  = (std::numeric_limits<RealScalar>::max)();               // largest floating-point number
@@ -165,12 +165,13 @@ MatrixBase<Derived>::stableNorm() const
   
   typedef typename internal::nested_eval<Derived,2>::type DerivedCopy;
   typedef typename internal::remove_all<DerivedCopy>::type DerivedCopyClean;
-  DerivedCopy copy(derived());
+  const DerivedCopy copy(derived());
   
   enum {
     CanAlign = (   (int(DerivedCopyClean::Flags)&DirectAccessBit)
                 || (int(internal::evaluator<DerivedCopyClean>::Alignment)>0) // FIXME Alignment)>0 might not be enough
-               ) && (blockSize*sizeof(Scalar)*2<EIGEN_STACK_ALLOCATION_LIMIT) // ifwe cannot allocate on the stack, then let's not bother about this optimization
+               ) && (blockSize*sizeof(Scalar)*2<EIGEN_STACK_ALLOCATION_LIMIT)
+                 && (EIGEN_MAX_STATIC_ALIGN_BYTES>0) // if we cannot allocate on the stack, then let's not bother about this optimization
   };
   typedef typename internal::conditional<CanAlign, Ref<const Matrix<Scalar,Dynamic,1,0,blockSize,1>, internal::evaluator<DerivedCopyClean>::Alignment>,
                                                    typename DerivedCopyClean::ConstSegmentReturnType>::type SegmentWrapper;
