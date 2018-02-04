@@ -22,6 +22,7 @@ Vec lgmres(VecFunc matvec, VecFunc psolve, Vecr b, Vec x,
   Vec mvz(n);
   Vec z(n);
   Vec v_new(n);
+  DecQR QR;
 
   for (int k_outer = 0; k_outer < maxiter; k_outer++) {
 
@@ -42,9 +43,9 @@ Vec lgmres(VecFunc matvec, VecFunc psolve, Vecr b, Vec x,
     Mat A = Mat(ind, ind);
     Mat Q = Mat::Zero(ind, ind);
     Mat R = Mat::Zero(ind, ind-1);
+    Vec hcur = Vec(ind);
     vs.row(0) = vs0;
     Q(0, 0) = 1.;
-    DecQR QR;
 
     unsigned int j = 1;
     for (; j < ind; j++) {
@@ -60,12 +61,8 @@ Vec lgmres(VecFunc matvec, VecFunc psolve, Vecr b, Vec x,
       v_new = psolve(mvz);
       double v_new_norm = v_new.norm();
 
-      Vec hcur = Vec::Zero(j + 1);
-      for (unsigned int i = 0; i < j; i++) {
-        double alpha = vs.row(i).dot(v_new);
-        hcur(i) = alpha;
-        v_new -= alpha * vs.row(i);
-      }
+      hcur.head(j) = vs.topRows(j) * v_new;
+      v_new -= hcur.transpose() * vs.topRows(j);
       hcur(j) = v_new.norm();
 
       v_new /= hcur(j);
@@ -76,7 +73,7 @@ Vec lgmres(VecFunc matvec, VecFunc psolve, Vecr b, Vec x,
 
       A.topLeftCorner(j + 1, j - 1) = Q.topLeftCorner(j + 1, j + 1) *
                                       R.topLeftCorner(j + 1, j - 1);
-      A.block(0, j - 1, j + 1, 1) = hcur;
+      A.block(0, j - 1, j + 1, 1) = hcur.head(j + 1);
       QR.compute(A.topLeftCorner(j + 1, j));
 
 
